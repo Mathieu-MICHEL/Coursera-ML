@@ -1,0 +1,162 @@
+---
+title: "Coursera - Prediction Assignment Writeup"
+author: "Mathieu MICHEL"
+date: "30/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Introduction
+
+
+The goal of this project is to predict the manner in which people exercise, knowing a bundle of quantitative information. Trainings are assessed with a grade from A to E. We will use available variables to predict wath grades would receive new test cases. This is the report describing how our model is built, how we used cross validation, what we think the expected out of sample error is, and why we made the choices we did. Finally we will use our prediction model to predict 20 different test cases.
+
+
+## Initialization
+
+
+First, we load few usefull libraries for the upcoming Machine Learning methods:
+
+```{r initialization}
+
+   library(caret)
+   library(gridExtra)
+   library(gbm)   
+   
+   set.seed(100)
+
+```
+
+
+Then the datasets themselves:
+
+```{r dataLoading}
+    
+   data_train <- read.csv("pml-training.csv")   
+   
+   data_test <- read.csv("pml-testing.csv")   
+
+```   
+   
+   
+We are trying to learn here about the **classe** variable through our training dataset:
+
+```{r trainingData}
+
+   dim(data_train)   # train set size
+   
+   summary(data_train)  # variables at glanse 1
+   
+   str(data_train)   # variables at glanse 2
+   
+   table(data_train$classe)   # check "classe" variable
+
+```
+
+
+## Explainatory variables selection
+
+
+It appears that the test dataset doesn't contain all the variables recorded in the training data. Hence we choose to reduce the scope of the data as per the test data. We first identify available variables:
+```{r testData}
+
+   dim(data_test)
+
+   summary(data_test)
+   
+   # Identify Non-NA columns in test data 
+   
+   index_v0 <- colSums(sapply(data_test,is.na))==20
+   index <- names(index_v0[index_v0==FALSE])
+   
+```
+
+And then we restrict our data of study:
+
+```{r newData}
+   data_train2 <- data_train[,names(data_train) %in% index]   
+   data_train2$classe <- as.factor(data_train$classe)
+   data_train2$user_name <- as.factor(data_train$user_name)
+   data_train2$new_window <- as.factor(data_train2$new_window)   
+   
+   data_train3 <- data_train2[,-c(1,5)] 
+   # 1st column is a record number, and 5th is the timing as character (while numeric time stamp is already there) 
+   
+   data_test2 <- data_test[,names(data_test) %in% index]
+   data_test2$user_name <- as.factor(data_test2$user_name)
+   data_test2$new_window <- as.factor(data_test2$new_window)
+
+   data_test3 <- data_test2[,-c(1,5)]
+   # 1st column is a record number, and 5th is the timing as character (while numeric time stamp is already there) 
+   
+   str(data_train3)
+   dim(data_train3)
+   
+```
+
+We then apply some simple models suitable to our ordinal variable:
+
+
+```{r models}
+
+   modelFit1 <- train(classe~., 
+                      data=data_train3, 
+                      method = "rpart")
+   
+   modelFit2 <- train(classe~., 
+                     data=data_train3, 
+                     method = "rpart",
+                     preProcess="pca")
+   
+   modelFit3 <- train(classe~., 
+                      data=data_train3, 
+                      method = "lda")
+
+   # glm is not fit to predict a factor variable with more than 2 levels
+   # we use "gbm" and "multinom"
+   modelFit4 <- train(classe~., 
+                      data=data_train3, 
+                      method = "gbm",
+                      verbose=FALSE)
+   
+   modelFit5 <- train(classe~., 
+                      data=data_train3, 
+                      method = "multinom")
+
+```
+
+Some of these take some time to compute.
+We finally register the resulting predictions and combine them in an averaged prediction:
+
+```{r prediction}
+
+   P1 <- predict(modelFit1,
+                newdata = data_test3)
+    
+   P2 <- predict(modelFit2,
+                newdata = data_test3)
+   
+   P3 <- predict(modelFit3,
+                newdata = data_test3)
+   
+   P4 <- predict(modelFit4,
+                newdata = data_test3)
+
+   P5 <- predict(modelFit5,
+                 newdata = data_test3)
+   
+   X <- rbind(P1,P2,P3,P4,P5)   
+   
+   Y <- as.factor(round(colMeans(X),digits = 0))
+   levels(Y) <- c("A","B","C","D","E")   
+   
+   Y
+
+```
+
+
+
